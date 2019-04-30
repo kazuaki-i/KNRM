@@ -43,9 +43,9 @@ def main():
                         help='resume the training from snapshot')
     parser.add_argument('--save-fin', '-sf', type=str,
                         help='save a snapshot at the training finished time')
-    # parser.add_argument('--model', '-model', default='transfer',
-    #                     choices=['cnn', 'transfer', 'gru'],
-    #                     help='Name of encoder model type.') Coming soon!
+    parser.add_argument('--model', '-model', default='transfer',
+                        choices=['cnn', 'transfer'],
+                        help='Name of encoder model type.')
     parser.add_argument('--early-stop', action='store_true', help='use early stopping method')
     parser.add_argument('--save-init', action='store_true', help='save init model')
     parser.add_argument('--save-snapshot', action='store_true', help='save snapshot per validation')
@@ -75,6 +75,7 @@ def main():
     if args.kernel:
         kernel = read_kernel(args.kernel)
     else:
+        # kernel = [(m10 / 10., 0.1) for m10 in range(-9, 11, 2)]
         kernel = [(1.0, 0.001)] + [(m10 / 10., 0.1) for m10 in range(-9, 11, 2)]
 
     print('# train  data: {}'.format(len(train)))
@@ -83,9 +84,15 @@ def main():
     print('# kernel size: {}'.format(len(kernel)))
 
     # Setup your defined model
-    Encoder = nets.KernelEncoder
+    hidden_units = None
+    if args.model == 'transfer':
+        Encoder = nets.KernelEncoder
+    elif args.model == 'cnn':
+        Encoder = nets.KernelEncoderCNN
+        hidden_units = 128
+
     encoder = Encoder(kernel=kernel, n_vocab=len(vocab), n_units=args.unit,
-                      dropout=args.dropout, embed_init=embed_init)
+                      dropout=args.dropout, hidden_units=hidden_units, embed_init=embed_init)
     model = nets.PairwiseRanker(encoder)
 
     if args.gpu >= 0:
@@ -96,6 +103,7 @@ def main():
     # Setup an optimizer
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
+    # optimizer.add_hook(chainer.optimizer.WeightDecay(0.01))
     optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
 
     # Set up a trainer
@@ -117,16 +125,17 @@ def main():
                    trigger=(1, 'epoch'))
 
     # Take a best snapshot
-    record_trigger = training.triggers.MaxValueTrigger('validation/main/accuracy', (1, 'epoch'))
-    trainer.extend(extensions.snapshot_object(model, 'best_model.npz'), trigger=record_trigger)
-    if args.save_snapshot:
-        trainer.extend(extensions.snapshot(filename='snapshot_latest'), trigger=(args.validation_interval, 'iteration'))
+    # record_trigger = training.triggers.MaxValueTrigger('validation/main/accuracy', (1, 'epoch'))
+    # trainer.extend(extensions.snapshot_object(model, 'best_model.npz'), trigger=record_trigger)
+    # if args.save_snapshot:
+    #     trainer.extend(extensions.snapshot(filename='snapshot_latest'), trigger=(args.validation_interval, 'iteration'))
 
     # Write a log of evaluation statistics for each epoch
     trainer.extend(extensions.LogReport(trigger=(args.validation_interval, 'iteration')))
     trainer.extend(extensions.PrintReport(
-        ['epoch', 'iteration', 'main/loss', 'validation/main/loss', 'main/accuracy',
-         'validation/main/accuracy', 'elapsed_time']), trigger=(args.validation_interval, 'iteration'))
+        ['epoch', 'iteration', 'main/loss', 'main/accuracy',  'elapsed_time']), trigger=(args.validation_interval, 'iteration'))
+    # ['epoch', 'iteration', 'main/loss', 'validation/main/loss', 'main/accuracy',
+    #  'validation/main/accuracy', 'elapsed_time']), trigger=(args.validation_interval, 'iteration'))
 
     if args.progressbar:
         # Print a progress bar to stdout
