@@ -39,6 +39,8 @@ def main():
                         help='use TextDataset API to reduce CPU memory usage')
     parser.add_argument('--validation-interval', type=int, default=10000,
                         help='number of iteration to evaluate the model with validation dataset')
+    parser.add_argument('--snapshot-interval', type=int, default=50000,
+                        help='number of iteration to save training snapshot')
     parser.add_argument('--resume', '-r', type=str,
                         help='resume the training from snapshot')
     parser.add_argument('--save-fin', '-sf', type=str,
@@ -47,8 +49,10 @@ def main():
                         choices=['cnn', 'transfer'],
                         help='Name of encoder model type.')
     parser.add_argument('--early-stop', action='store_true', help='use early stopping method')
+    parser.add_argument('--debug-mode', action='store_true', help='debug mode')
     parser.add_argument('--save-init', action='store_true', help='save init model')
     parser.add_argument('--save-snapshot', action='store_true', help='save snapshot per validation')
+    parser.add_argument('--save-epoch', action='store_true', help='save model per epoch (not only best epoch)')
     parser.add_argument('--progressbar', action='store_true', help='show training progressbar')
     args = parser.parse_args()
     print(json.dumps(args.__dict__, indent=2))
@@ -93,7 +97,7 @@ def main():
 
     encoder = Encoder(kernel=kernel, n_vocab=len(vocab), n_units=args.unit,
                       dropout=args.dropout, hidden_units=hidden_units, embed_init=embed_init)
-    model = nets.PairwiseRanker(encoder)
+    model = nets.PairwiseRanker(encoder, debug=args.debug_mode)
 
     if args.gpu >= 0:
         # Make a specified GPU current
@@ -110,7 +114,7 @@ def main():
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize)
     updater = training.updaters.StandardUpdater(train_iter, optimizer, converter=convert_seq3, device=args.gpu)
 
-    # early Stopping
+    # Early Stopping
     if args.early_stop:
         stop_trigger = triggers.EarlyStoppingTrigger(monitor='validation/main/loss', max_trigger=(args.epoch, 'epoch'))
     else:
@@ -124,18 +128,20 @@ def main():
     trainer.extend(nets.EvaluationPairwise(model, dev, vocab, key='validation/main', device=args.gpu),
                    trigger=(1, 'epoch'))
 
-    # Take a best snapshot
-    # record_trigger = training.triggers.MaxValueTrigger('validation/main/accuracy', (1, 'epoch'))
-    # trainer.extend(extensions.snapshot_object(model, 'best_model.npz'), trigger=record_trigger)
-    # if args.save_snapshot:
-    #     trainer.extend(extensions.snapshot(filename='snapshot_latest'), trigger=(args.validation_interval, 'iteration'))
+    # Take a snapshot
+    trainer.extend(extensions.snapshot(filename='snapshot_latest'), trigger=(args.snapshot_interval, 'iteration'))
+
+    # Save a model
+    if args.save_epoch:
+        trainer.extend(extensions.snapshot_object(model, 'epoch{.updater.epoch}_model.npz'), trigger=(1, 'epoch'))
+    record_trigger = training.triggers.MaxValueTrigger('validation/main/accuracy', (1, 'epoch'))
+    trainer.extend(extensions.snapshot_object(model, 'best_model.npz'), trigger=record_trigger)
 
     # Write a log of evaluation statistics for each epoch
     trainer.extend(extensions.LogReport(trigger=(args.validation_interval, 'iteration')))
     trainer.extend(extensions.PrintReport(
-        ['epoch', 'iteration', 'main/loss', 'main/accuracy',  'elapsed_time']), trigger=(args.validation_interval, 'iteration'))
-    # ['epoch', 'iteration', 'main/loss', 'validation/main/loss', 'main/accuracy',
-    #  'validation/main/accuracy', 'elapsed_time']), trigger=(args.validation_interval, 'iteration'))
+        ['epoch', 'iteration', 'main/loss', 'validation/main/loss', 'main/accuracy',
+         'validation/main/accuracy', 'elapsed_time']), trigger=(args.validation_interval, 'iteration'))
 
     if args.progressbar:
         # Print a progress bar to stdout
@@ -152,6 +158,7 @@ def main():
     model_setup['vocab_path'] = vocab_path
     model_setup['model_path'] = model_path
     model_setup['datetime'] = current_datetime
+    model_setup['kernel'] = kernel
     with open(os.path.join(args.out, 'args.json'), 'w') as f:
         json.dump(args.__dict__, f)
 
@@ -166,10 +173,6 @@ def main():
     print('Start trainer.run: {}'.format(current_datetime))
     trainer.run()
     print('Elapsed_time: {}'.format(datetime.timedelta(seconds=time.time()-start)))
-
-    if args.save_fin:
-        # save latest epoch model
-        chainer.serializers.save_npz(os.path.join(args.out, 'epoch{}_model.npz'.format(args.epoch)), model)
 
 
 if __name__ == '__main__':

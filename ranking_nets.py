@@ -1,5 +1,4 @@
 import numpy
-import gc
 
 import chainer
 import chainer.functions as F
@@ -49,22 +48,20 @@ class EvaluationPairwise(chainer.training.Extension):
 
 
 class PairwiseRanker(chainer.Chain):
-    def __init__(self, encoder, dropout=0.1):
+    def __init__(self, encoder, dropout=0.1, debug=False):
         super(PairwiseRanker, self).__init__()
         with self.init_scope():
             self.encoder = encoder
         self.dropout = dropout
+        self.debug = bool(debug)
 
     def forward(self, xs1, xs2, xs3, ys, train=True):
-        with chainer.using_config('debug', True):
+        with chainer.using_config('debug', self.debug):
             # initialization
             batch_size = len(ys)
             direction = F.reshape(F.concat(ys, axis=0), (batch_size, 1))
             zeros = self.xp.zeros((batch_size, 1), self.xp.float32)
-            a = self.xp.array(ys, self.xp.int32)
-            a = a < 0.
-            a = self.xp.array(a, self.xp.int32)
-            label = F.concat(a, axis=0)
+            label = F.concat(self.xp.array(self.xp.array(ys, self.xp.int32) < 0., self.xp.int32),  axis=0)
 
             # calculate ranking score each pair
             f1 = self.encoder(xs1, xs2)
@@ -79,14 +76,14 @@ class PairwiseRanker(chainer.Chain):
             # calculate pair-wise accuracy
             accuracy = F.accuracy(x, label)
 
-            print(loss, accuracy)
+            # print(loss, accuracy)
 
-        if train:
-            reporter.report({'loss': loss}, self)
-            reporter.report({'accuracy': accuracy}, self)
-            return loss
-        else:
-            return loss, accuracy
+            if train:
+                reporter.report({'loss': loss}, self)
+                reporter.report({'accuracy': accuracy}, self)
+                return loss
+            else:
+                return loss, accuracy
 
 
 class Utils:
@@ -101,8 +98,8 @@ class Utils:
     def normalize(self, x):
         n = self.xp.linalg.norm(x.data, axis=-1)
         n = n[:, :,  None]
-        n = F.tile(n, (1, 1, x.shape[-1])) + self.minute_num
-        return x / n
+        n = F.tile(n, (1, 1, x.shape[-1]))
+        return x / (n + self.minute_num)
 
     def masking(self, x):
         m = self.xp.sum(self.xp.absolute(x.data), axis=-1) > 0.
@@ -115,7 +112,8 @@ class Utils:
                                       _x, self.xp.float32) for _x in x], axis=0)
 
     def cross_match(self, x1, x2, m1, m2):
-        x1, x2 = self.normalize(x1), self.normalize(x2)
+        x1 = self.normalize(x1)
+        x2 = self.normalize(x2)
 
         x1 = F.repeat(x1, self.column, axis=1)
         x2 = F.tile(x2, (1, self.row, 1))
@@ -167,7 +165,7 @@ class KernelEncoder(chainer.Chain):
         self.out_units = len(kernel)
         self.means = [m for m, _ in self.kernels]
         self.variances = [v for _, v in self.kernels]
-        self.minute_num = 0.
+        self.minute_num = minute_num
 
     def forward(self, xs1, xs2):
         # padding inputs
@@ -198,7 +196,7 @@ class KernelEncoder(chainer.Chain):
 
 
 class KernelEncoderCNN(chainer.Chain):
-    def __init__(self, kernel, n_vocab, n_units, hidden_units=0, embed_init=None, dropout=0.1, minute_num=0.00001):
+    def __init__(self, kernel, n_vocab, n_units, hidden_units=0, embed_init=None, dropout=0.1, minute_num=0.0001):
         super(KernelEncoderCNN, self).__init__()
         with self.init_scope():
             if embed_init is not None:
