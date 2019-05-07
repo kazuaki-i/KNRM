@@ -46,6 +46,11 @@ split -l 100000 ../pairwise.train -d
 ```
 
 If you want to train efficiently, you pre-training word vector by word2vec.
+
+```sh
+cat pointwise.train | python trainWord2Vec.py
+```
+
 Option -v of `train_text_pair_ranking.py` can load word2vec vector file. 
 
 
@@ -63,6 +68,7 @@ Important options are below:
 - vocab-source(-vs): vocab source file (e.g. pointwise.train)
 - v(-v): pre-training word2vec data (not binary)
 - kernel(-k): RBF-kernel parameters you defined by csv format (See kernels.csv)
+- model: choice model from cnn(Conv-KNRM) or transfer(knrm) 
 
 The output directory result contains:
 
@@ -95,7 +101,7 @@ input1(words separated space) \t input2(words separated space) \t score
 ```
 
 まず、データセットをクエリ（input1）単位で学習・開発・テストセットに分割します。
-```
+```sh
 cat dataset | python split_dataset.py > pointwise.train
 ```
 初期設定では、開発セットが「pointwise.dev」、テストセットが「pointwise.test」として保存されます。
@@ -103,7 +109,7 @@ cat dataset | python split_dataset.py > pointwise.train
 
 次に、pairwise学習用のフォーマットに書き換えます
 
-```
+```sh
 cat pointwise.train | python convert_pairwise_format.py > pairwise.train
 cat pointwise.dev | python convert_pairwise_format.py > pairwise.dev
 cat pointwise.test | python convert_pairwise_format.py > pairwise.test  
@@ -113,7 +119,7 @@ pairwise.train と pairwise.dev が学習で、pairwise.test が評価に使わ�
 
 
 ## Optional
-ディスク容量を節約したい場合は、圧縮しつつ処理してください
+ディスク容量を節約したい場合は、圧縮しつつ処理してください。標準入出力に対応しています。
 ```
 (z)cat dataset | python split_dataset.py | gzip -c > pointwise.train.gz
 zcat pointwise.train.gz | python convert_pairwise_format.py > pairwise.train.gz
@@ -125,14 +131,18 @@ mkdir train; cd train
 split -l 100000 ../pairwise.train -d
 ```
 
-学習を効率的に進めたい場合は、word2vecで単語ベクトルをあらかじめ学習してください。
+学習を効率的に進めたい場合は、word2vecなどで単語ベクトルを作成しておくことをお勧めします。
+```sh
+cat pointwise.train | python trainWord2Vec.py
+```
+
 -v オプションでword2vecの単語ベクトルのファイルを呼び出せます。
 
 # How to RUN
 
 学習：
 
-```
+```sh
 python train_text_pair_ranking.py -T "train/x*" -D pairwise.dev -vs pointwise.train --use-dataset-api -k kernels.csv -g 0
 ```
 -T と -D は必須、-vs と -v はどちらか必須のオプションです。
@@ -142,6 +152,7 @@ python train_text_pair_ranking.py -T "train/x*" -D pairwise.dev -vs pointwise.tr
 - vocab-source(-vs): vocabularyの元となるファイルです。単語ベクトルの初期値はランダムになります
 - v(-v): word2vecで学習した単語ベクトルのデータです (not binary)
 - kernel(-k): RBF-kernel のパラメータです (See kernels.csv)
+- model: モデルの種類です。cnnとtransferから選択できます。
 
 出力は以下の通りです：
 - best_model.npz: a model snapshot, which won the best accuracy for validation data during training
