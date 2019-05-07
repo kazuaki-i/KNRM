@@ -61,7 +61,10 @@ class PairwiseRanker(chainer.Chain):
             batch_size = len(ys)
             direction = F.reshape(F.concat(ys, axis=0), (batch_size, 1))
             zeros = self.xp.zeros((batch_size, 1), self.xp.float32)
-            label = F.concat((self.xp.array(ys) < 0).astype(self.xp.int32), axis=0)
+            a = self.xp.array(ys, self.xp.int32)
+            a = a < 0.
+            a = self.xp.array(a, self.xp.int32)
+            label = F.concat(a, axis=0)
 
             # calculate ranking score each pair
             f1 = self.encoder(xs1, xs2)
