@@ -51,7 +51,6 @@ def main():
     parser.add_argument('--early-stop', action='store_true', help='use early stopping method')
     parser.add_argument('--debug-mode', action='store_true', help='debug mode')
     parser.add_argument('--save-init', action='store_true', help='save init model')
-    parser.add_argument('--save-snapshot', action='store_true', help='save snapshot per validation')
     parser.add_argument('--save-epoch', action='store_true', help='save model per epoch (not only best epoch)')
     parser.add_argument('--progressbar', action='store_true', help='show training progressbar')
     args = parser.parse_args()
