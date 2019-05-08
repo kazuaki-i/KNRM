@@ -60,7 +60,6 @@ class PairwiseRanker(chainer.Chain):
             # initialization
             batch_size = len(ys)
             direction = F.reshape(F.concat(ys, axis=0), (batch_size, 1))
-            zeros = self.xp.zeros((batch_size, 1), self.xp.float32)
             label = F.concat(self.xp.array(self.xp.array(ys, self.xp.int32) < 0., self.xp.int32),  axis=0)
 
             # calculate ranking score each pair
@@ -70,7 +69,6 @@ class PairwiseRanker(chainer.Chain):
             # reflect direction of higher or lower ranking
             ps = (f1 - f2) * direction
             x = F.concat([f1, f2, ps], axis=1)
-            print(x[0])
 
             loss = F.sum(F.relu(1 - ps), axis=0)[0]
             accuracy = F.accuracy(F.concat([f1, f2], axis=1), label)
