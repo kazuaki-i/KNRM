@@ -70,13 +70,10 @@ class PairwiseRanker(chainer.Chain):
             # reflect direction of higher or lower ranking
             ps = (f1 - f2) * direction
             x = F.concat([f1, f2, ps], axis=1)
+            print(x[0])
 
-            # calculate loss
-            loss = F.sum(F.max(F.concat((zeros, 1 - ps), axis=1), axis=1))
-            # calculate pair-wise accuracy
-            accuracy = F.accuracy(x, label)
-
-            # print(loss, accuracy)
+            loss = F.sum(F.relu(1 - ps), axis=0)[0]
+            accuracy = F.accuracy(F.concat([f1, f2], axis=1), label)
 
             if train:
                 reporter.report({'loss': loss}, self)
@@ -107,45 +104,59 @@ class Utils:
         m = self.xp.tile(m, (1, 1, x.shape[-1]))
         return m
 
-    def kernel_shaping(self, x):
-        return F.concat([self.xp.full((self.batch_size, self.column, self.row),
-                                      _x, self.xp.float32) for _x in x], axis=0)
+    def kernel_shaping(self, parm_lst):
+        k = [self.xp.full((self.row, self.column), p, self.xp.float32) for p in parm_lst]
+        return F.repeat(F.reshape(F.concat(k, axis=0), (1, self.out_units, self.row, self.column)), self.batch_size, axis=0)
 
     def cross_match(self, x1, x2, m1, m2):
+        # Normalization
         x1 = self.normalize(x1)
         x2 = self.normalize(x2)
 
+        # Expand for batch calculation
         x1 = F.repeat(x1, self.column, axis=1)
         x2 = F.tile(x2, (1, self.row, 1))
 
         m1 = self.xp.repeat(m1, self.column, axis=1)
         m2 = self.xp.tile(m2, (1, self.row, 1))
 
+        # Calculate Cosing similarity
         x = F.sum(x1 * x2, axis=-1)
-        x = F.reshape(x, (self.batch_size, self.column, self.row))
+        x = F.reshape(x, (self.batch_size, self.row, self.column))
 
-        mask = self.xp.all(self.xp.logical_and(m1, m2), axis=-1)
-        mask = self.xp.reshape(mask, (self.batch_size, self.column, self.row))
+        mask = self.xp.logical_and(m1, m2)
+        mask = self.xp.all(mask, axis=-1)
+        mask = self.xp.reshape(mask, (self.batch_size, self.row,  self.column))
 
         return x, mask
 
-    def kernel_pooling(self, x, m, mean, variance):
-        # calculate RBF kernel
-        x = F.tile(x, (self.out_units, 1, 1))
-        mask = self.xp.tile(m, (self.out_units, 1, 1))
+    def denominator(self, mask):
+        deno = self.xp.sum(mask, axis=-1)
+        deno = self.xp.array(deno, self.xp.float32)
+        deno = self.xp.where(deno > 0, deno, self.xp.full(deno.shape, float('inf'), self.xp.float32))
+        return deno
 
+    def kernel_pooling(self, x, mask, mean, variance):
+        # calculate RBF kernel
+
+        # Shaping for kernel calculation
+        x = F.reshape(x, (self.batch_size, 1, self.row, self.column))
+        x = F.repeat(x, self.out_units, axis=1)
+
+        mask = self.xp.reshape(mask, (self.batch_size, 1, self.row, self.column))
+        mask = self.xp.repeat(mask, self.out_units, axis=1)
+
+        # Calculate kernel
         x = F.exp(-1 * (x - mean)**2 / (2 * variance**2))
-        x = F.where(mask, x, self.xp.full(x.shape, 0., self.xp.float32))
 
         # pooling (b x k x n x m) -> (b x k x n)
-        s = (self.batch_size, self.out_units, self.column, self.row,)
-        x = F.sum(F.reshape(x, s), axis=-1)
-        mask = self.xp.all(self.xp.reshape(mask, s), axis=-1)
+        x = F.sum(x, axis=-1) / self.denominator(mask)
+        mask = self.xp.any(mask, axis=-1)
 
         # pooling (b x k x n) -> (b x k)
         x = F.log(x + self.minute_num)
         x = F.where(mask, x, self.xp.full(x.shape, 0., self.xp.float32))
-        x = F.sum(x, axis=-1)
+        x = F.sum(x, axis=-1) / self.denominator(mask)
 
         return x
 
@@ -158,6 +169,7 @@ class KernelEncoder(chainer.Chain):
                 embed_init = chainer.initializers.Uniform(.5)
             self.embed = L.EmbedID(n_vocab, n_units, initialW=embed_init, ignore_label=-1)
             self.liner = L.Linear(len(kernel), 1)
+            self.prelu = L.PReLU()
 
         self.n_units = n_units
         self.dropout = dropout
@@ -182,6 +194,7 @@ class KernelEncoder(chainer.Chain):
         utils = Utils(self.out_units, batch_size, column, row, self.xp, self.minute_num)
 
         m1, m2 = utils.masking(ex1), utils.masking(ex2)
+
         mean = utils.kernel_shaping(self.means)
         variance = utils.kernel_shaping(self.variances)
 
@@ -190,7 +203,8 @@ class KernelEncoder(chainer.Chain):
         h = utils.kernel_pooling(h, mask, mean, variance)
 
         # calculate ranking score
-        h = F.tanh(self.liner(h))
+        h = self.liner(h)
+        h = F.rrelu(h)
 
         return h
 

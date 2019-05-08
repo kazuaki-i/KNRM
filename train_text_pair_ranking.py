@@ -135,8 +135,9 @@ def main():
     # Save a model
     if args.save_epoch:
         trainer.extend(extensions.snapshot_object(model, 'epoch{.updater.epoch}_model.npz'), trigger=(1, 'epoch'))
-    record_trigger = training.triggers.MaxValueTrigger('validation/main/accuracy', (1, 'epoch'))
-    trainer.extend(extensions.snapshot_object(model, 'best_model.npz'), trigger=record_trigger)
+    else:
+        record_trigger = training.triggers.MaxValueTrigger('validation/main/accuracy', (1, 'epoch'))
+        trainer.extend(extensions.snapshot_object(model, 'best_model.npz'), trigger=record_trigger)
 
     # Write a log of evaluation statistics for each epoch
     trainer.extend(extensions.LogReport(trigger=(args.validation_interval, 'iteration')))
@@ -161,7 +162,6 @@ def main():
     model_setup['datetime'] = current_datetime
     model_setup['kernel'] = kernel
     model_setup['vocab_size'] = len(vocab)
-    model_setup['hidden_units'] = hidden_units
 
     with open(os.path.join(args.out, 'args.json'), 'w') as f:
         json.dump(args.__dict__, f)
