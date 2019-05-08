@@ -26,6 +26,8 @@ def main():
                         help='Directory to output the result')
     parser.add_argument('--unit', '-u', type=int, default=200,
                         help='Number of units')
+    parser.add_argument('--h-unit', '-hu', type=int, default=128,
+                        help='Number of hidden units')
     parser.add_argument('--vocabsize', type=int, default=50000,
                         help='Number of max vocabulary')
     parser.add_argument('--dropout', '-d', type=float, default=0.1,
@@ -47,6 +49,7 @@ def main():
                         choices=['cnn', 'transfer'],
                         help='Name of encoder model type.')
     parser.add_argument('--early-stop', action='store_true', help='use early stopping method')
+    parser.add_argument('--snapshot-divide', action='store_true', help='save divide snapshot')
     parser.add_argument('--debug-mode', action='store_true', help='debug mode')
     parser.add_argument('--save-init', action='store_true', help='save init model')
     parser.add_argument('--save-epoch', action='store_true', help='save model per epoch (not only best epoch)')
@@ -85,15 +88,13 @@ def main():
     print('# kernel size: {}'.format(len(kernel)))
 
     # Setup your defined model
-    hidden_units = None
     if args.model == 'transfer':
         Encoder = nets.KernelEncoder
     elif args.model == 'cnn':
         Encoder = nets.KernelEncoderCNN
-        hidden_units = 128
 
     encoder = Encoder(kernel=kernel, n_vocab=len(vocab), n_units=args.unit,
-                      dropout=args.dropout, hidden_units=hidden_units, embed_init=embed_init)
+                      dropout=args.dropout, hidden_units=args.h_unit, embed_init=embed_init)
     model = nets.PairwiseRanker(encoder, debug=args.debug_mode)
 
     if args.gpu >= 0:
@@ -125,7 +126,11 @@ def main():
                    trigger=(1, 'epoch'))
 
     # Take a snapshot
-    trainer.extend(extensions.snapshot(filename='snapshot_latest'), trigger=(args.snapshot_interval, 'iteration'))
+    if args.snapshot_divide:
+        trainer.extend(
+            extensions.snapshot(filename='snapshot_iter_{.updater.iteration}'), trigger=(args.snapshot_interval, 'iteration'))
+    else:
+        trainer.extend(extensions.snapshot(filename='snapshot_latest'), trigger=(args.snapshot_interval, 'iteration'))
 
     # Save a model
     if args.save_epoch:
@@ -155,6 +160,9 @@ def main():
     model_setup['model_path'] = model_path
     model_setup['datetime'] = current_datetime
     model_setup['kernel'] = kernel
+    model_setup['vocab_size'] = len(vocab)
+    model_setup['hidden_units'] = hidden_units
+
     with open(os.path.join(args.out, 'args.json'), 'w') as f:
         json.dump(args.__dict__, f)
 
