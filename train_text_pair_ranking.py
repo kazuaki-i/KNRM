@@ -39,12 +39,10 @@ def main():
                         help='use TextDataset API to reduce CPU memory usage')
     parser.add_argument('--validation-interval', type=int, default=10000,
                         help='number of iteration to evaluate the model with validation dataset')
-    parser.add_argument('--snapshot-interval', type=int, default=50000,
+    parser.add_argument('--snapshot-interval', type=int, default=10000,
                         help='number of iteration to save training snapshot')
     parser.add_argument('--resume', '-r', type=str,
                         help='resume the training from snapshot')
-    parser.add_argument('--save-fin', '-sf', type=str,
-                        help='save a snapshot at the training finished time')
     parser.add_argument('--model', '-model', default='transfer',
                         choices=['cnn', 'transfer'],
                         help='Name of encoder model type.')
@@ -106,7 +104,6 @@ def main():
     # Setup an optimizer
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
-    # optimizer.add_hook(chainer.optimizer.WeightDecay(0.01))
     optimizer.add_hook(chainer.optimizer.WeightDecay(1e-4))
 
     # Set up a trainer
