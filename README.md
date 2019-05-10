@@ -79,9 +79,14 @@ The output directory result contains:
 
 
 To evaluate:
+
+Support pairwise and list-wise evaluation
+
 ```
-Coming soon!
+cat ../pairwise.test | python ~/workspace/deploy/knrm/evaluation.py -m best_model.npz -t pair
+cat ../pointwise.test | python ~/workspace/deploy/knrm/evaluation.py -m best_model.npz -t list
 ```
+
 
 ---
 
@@ -162,6 +167,9 @@ python train_text_pair_ranking.py -T "train/x*" -D pairwise.dev -vs pointwise.tr
 
 
 評価:
+
+ペアワイズの評価とリストワイズの評価に対応しています
 ```
-準備中!
+cat ../pairwise.test | python ~/workspace/deploy/knrm/evaluation.py -m best_model.npz -t pair
+cat ../pointwise.test | python ~/workspace/deploy/knrm/evaluation.py -m best_model.npz -t list
 ```

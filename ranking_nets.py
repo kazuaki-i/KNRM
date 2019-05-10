@@ -163,7 +163,7 @@ class KernelEncoder(chainer.Chain):
     def __init__(self, kernel, n_vocab, n_units, hidden_units=0, embed_init=None, dropout=0.1,  minute_num=0.00001):
         super(KernelEncoder, self).__init__()
         with self.init_scope():
-            if embed_init is not None:
+            if embed_init is None:
                 embed_init = chainer.initializers.Uniform(.5)
             self.embed = L.EmbedID(n_vocab, n_units, initialW=embed_init, ignore_label=-1)
             self.liner = L.Linear(len(kernel), 1)
@@ -202,7 +202,7 @@ class KernelEncoder(chainer.Chain):
 
         # calculate ranking score
         h = self.liner(h)
-        h = F.rrelu(h)
+        h = F.leaky_relu(h)
 
         return h
 
@@ -211,7 +211,7 @@ class KernelEncoderCNN(chainer.Chain):
     def __init__(self, kernel, n_vocab, n_units, hidden_units=0, embed_init=None, dropout=0.1, minute_num=0.0001):
         super(KernelEncoderCNN, self).__init__()
         with self.init_scope():
-            if embed_init is not None:
+            if embed_init is None:
                 embed_init = chainer.initializers.Uniform(.25)
             self.embed = L.EmbedID(n_vocab, n_units, initialW=embed_init, ignore_label=-1)
             self.c1 = L.Convolution2D(
